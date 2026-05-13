@@ -23,6 +23,13 @@ const BUYING_SUBREDDITS = [
   'laptops',
   'buildapc',
   'hometheater',
+  'GamingLaptops',
+  '4kTV',
+  'Televisions',
+  'homeautomation',
+  'smarthome',
+  'BudgetAudiophile',
+  'audiophile',
 ];
 
 /**
@@ -35,8 +42,9 @@ async function search(query, maxResults = MAX_RESULTS) {
   try {
     logger.info('Searching Reddit', { query, maxResults });
 
-    // Search across all of Reddit
-    const posts = await searchPosts(query, maxResults);
+    // Search in buying-related subreddits only
+    const postsPerSubreddit = Math.ceil(maxResults / BUYING_SUBREDDITS.length);
+    const posts = await searchInSubreddits(query, BUYING_SUBREDDITS, postsPerSubreddit);
 
     // For each top post, fetch top-level comments
     const allSources = [...posts];
