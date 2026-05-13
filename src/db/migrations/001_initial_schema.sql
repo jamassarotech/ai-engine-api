@@ -106,7 +106,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Add trigger to queries table
+-- Add trigger to queries table (drop if exists to make migration idempotent)
+DROP TRIGGER IF EXISTS update_queries_updated_at ON queries;
 CREATE TRIGGER update_queries_updated_at
   BEFORE UPDATE ON queries
   FOR EACH ROW
