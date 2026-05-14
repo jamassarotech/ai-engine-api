@@ -116,6 +116,8 @@ async function generateAnalysis(query, sources, options = {}) {
  * @returns {string} Formatted sources text
  */
 function formatSourcesForPrompt(sources) {
+  const maxContentLength = config.sourceContentMaxLength || 800;
+  
   return sources
     .map((source, index) => {
       const type = source.source_type.toUpperCase();
@@ -127,8 +129,8 @@ Author: ${source.author || 'Unknown'}
 Published: ${date}
 Score: ${source.score?.toLocaleString() || 0} ${source.source_type === 'youtube' ? 'views' : 'upvotes'}
 URL: ${source.url}
-Content: ${source.text ? source.text.substring(0, 1000) : 'No content available'}
-${source.text && source.text.length > 1000 ? '...' : ''}
+Content: ${source.text ? source.text.substring(0, maxContentLength) : 'No content available'}
+${source.text && source.text.length > maxContentLength ? '...' : ''}
 ---`;
     })
     .join('\n');

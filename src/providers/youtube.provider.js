@@ -14,17 +14,20 @@ const MAX_RESULTS = 10; // Balance between relevance and quota usage
 /**
  * Search YouTube for videos related to the query
  * @param {string} query - Search query
- * @param {number} maxResults - Maximum number of results (default: 10)
+ * @param {number} maxResults - Maximum number of results (default: from config)
  * @returns {Promise<Array>} Array of normalized video objects
  */
-async function search(query, maxResults = MAX_RESULTS) {
+async function search(query, maxResults = null) {
   if (!config.youtubeApiKey) {
     logger.warn('YouTube API key not configured, skipping YouTube search');
     return [];
   }
 
+  // Use config value if not specified
+  const limit = maxResults || config.maxYoutubeResults || MAX_RESULTS;
+
   try {
-    logger.info('Searching YouTube', { query, maxResults });
+    logger.info('Searching YouTube', { query, maxResults: limit });
 
     // Step 1: Search for video IDs
     const searchResponse = await axios.get(`${YOUTUBE_API_BASE}/search`, {
@@ -33,7 +36,7 @@ async function search(query, maxResults = MAX_RESULTS) {
         q: query,
         part: 'id,snippet',
         type: 'video',
-        maxResults,
+        maxResults: limit,
         relevanceLanguage: 'en',
         safeSearch: 'moderate',
         order: 'relevance',

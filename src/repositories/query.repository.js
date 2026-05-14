@@ -37,6 +37,58 @@ async function create(data) {
 }
 
 /**
+ * Find or create query (upsert) - returns existing query or creates new one
+ * @param {Object} data - Query data
+ * @returns {Promise<Object>} Query object with isNew flag
+ */
+async function findOrCreate(data) {
+  const { original_query, normalized_query, slug, query_type, status = 'completed' } = data;
+
+  try {
+    // First, try to find by slug
+    const existing = await findBySlug(slug);
+    
+    if (existing) {
+      logger.debug('Query found by slug', { queryId: existing.id, slug });
+      // Update the existing query with new data
+      const result = await pool.query(
+        `UPDATE queries 
+         SET original_query = $1, 
+             normalized_query = $2, 
+             query_type = $3, 
+             status = $4, 
+             updated_at = NOW()
+         WHERE slug = $5
+         RETURNING *`,
+        [original_query, normalized_query, query_type, status, slug]
+      );
+      
+      return {
+        query: result.rows[0],
+        isNew: false,
+      };
+    }
+
+    // If not found, create new
+    const result = await pool.query(
+      `INSERT INTO queries (original_query, normalized_query, slug, query_type, status)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [original_query, normalized_query, slug, query_type, status]
+    );
+
+    logger.debug('Query created', { queryId: result.rows[0].id, slug });
+    return {
+      query: result.rows[0],
+      isNew: true,
+    };
+  } catch (error) {
+    logger.error('Failed to find or create query', { error: error.message, slug });
+    throw new DatabaseError('Failed to find or create query', error);
+  }
+}
+
+/**
  * Find query by normalized query string
  * @param {string} normalizedQuery - Normalized query string
  * @returns {Promise<Object|null>} Query object or null
@@ -155,6 +207,7 @@ async function getByType(queryType, limit = 10) {
 
 module.exports = {
   create,
+  findOrCreate,
   findByNormalizedQuery,
   findBySlug,
   findById,

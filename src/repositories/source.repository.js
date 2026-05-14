@@ -40,7 +40,7 @@ async function create(data) {
 }
 
 /**
- * Create multiple sources in bulk
+ * Create multiple sources in bulk (optimized with single INSERT)
  * @param {Array<Object>} sources - Array of source objects
  * @returns {Promise<Array>} Array of created source objects
  */
@@ -49,36 +49,42 @@ async function bulkCreate(sources) {
     return [];
   }
 
-  const client = await pool.connect();
-
   try {
-    await client.query('BEGIN');
-
-    const createdSources = [];
-
-    for (const source of sources) {
-      const { query_id, source_type, title, url, author, published_at, text, score } = source;
-
-      const result = await client.query(
-        `INSERT INTO sources (query_id, source_type, title, url, author, published_at, text, score)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         RETURNING *`,
-        [query_id, source_type, title, url, author, published_at, text, score]
+    // Build parameterized query with multiple value sets
+    const values = [];
+    const placeholders = [];
+    
+    sources.forEach((source, index) => {
+      const offset = index * 8;
+      placeholders.push(
+        `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8})`
       );
+      
+      values.push(
+        source.query_id,
+        source.source_type,
+        source.title,
+        source.url,
+        source.author || null,
+        source.published_at || null,
+        source.text || null,
+        source.score || 0
+      );
+    });
 
-      createdSources.push(result.rows[0]);
-    }
+    const query = `
+      INSERT INTO sources (query_id, source_type, title, url, author, published_at, text, score)
+      VALUES ${placeholders.join(', ')}
+      RETURNING *
+    `;
 
-    await client.query('COMMIT');
+    const result = await pool.query(query, values);
 
-    logger.debug('Bulk sources created', { count: createdSources.length, queryId: sources[0]?.query_id });
-    return createdSources;
+    logger.debug('Bulk sources created', { count: result.rows.length, queryId: sources[0]?.query_id });
+    return result.rows;
   } catch (error) {
-    await client.query('ROLLBACK');
-    logger.error('Failed to bulk create sources', { error: error.message });
+    logger.error('Failed to bulk create sources', { error: error.message, count: sources.length });
     throw new DatabaseError('Failed to bulk create sources', error);
-  } finally {
-    client.release();
   }
 }
 

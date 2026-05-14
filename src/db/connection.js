@@ -10,8 +10,11 @@ const pool = new Pool({
   user: config.database.user,
   password: config.database.password,
   max: config.database.maxConnections,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  idleTimeoutMillis: config.database.idleTimeoutMillis || 30000,
+  connectionTimeoutMillis: config.database.connectionTimeoutMillis || 5000,
+  // Performance optimizations
+  min: 5, // Maintain minimum connections
+  allowExitOnIdle: false, // Keep pool alive
 });
 
 // Log connection events

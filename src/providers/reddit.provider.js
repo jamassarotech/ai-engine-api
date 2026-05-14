@@ -13,52 +13,199 @@ const USER_AGENT = 'ai-engine-api/1.0';
 const MAX_RESULTS = 20;
 const REQUEST_DELAY = 1000; // 1 second between requests to respect rate limits
 
-// Relevant subreddits for buying research
+// Relevant subreddits for buying research (organized by category)
 const BUYING_SUBREDDITS = [
+  // General buying advice
   'BuyItForLife',
   'reviews',
   'ProductReviews',
+  
+  // Food & Dining
+  'AskNYC',
+  'FoodNYC',
+  'food',
+  'Cooking',
+  'AskCulinary',
+  'foodhacks',
+  
+  // Home & Kitchen
+  'HomeImprovement',
+  'Appliances',
+  'homeautomation',
+  'smarthome',
+  'InteriorDesign',
+  'ApartmentLiving',
+  
+  // Electronics & Tech
   'headphones',
   'monitors',
   'laptops',
   'buildapc',
+  
+  // Entertainment
   'hometheater',
-  'GamingLaptops',
   '4kTV',
   'Televisions',
-  'homeautomation',
-  'smarthome',
+  'GamingLaptops',
   'BudgetAudiophile',
-  'audiophile',
 ];
+
+/**
+ * Select relevant subreddits based on query keywords
+ * @param {string} query - Search query
+ * @param {number} maxSubreddits - Maximum subreddits to return
+ * @returns {Array<string>} Relevant subreddit names
+ */
+function selectRelevantSubreddits(query, maxSubreddits = 10) {
+  const queryLower = query.toLowerCase();
+  const relevantSubs = new Set();
+  
+  // Always include general buying advice subreddits
+  relevantSubs.add('BuyItForLife');
+  relevantSubs.add('reviews');
+  relevantSubs.add('ProductReviews');
+  
+  // Food & Restaurant keywords
+  if (queryLower.match(/\b(restaurant|food|dining|eat|meal|cafe|bar|pizza|burger|sushi|chinese|italian|mexican|thai|indian|brunch|lunch|dinner|chef|menu|cuisine)\b/i)) {
+    relevantSubs.add('AskNYC');
+    relevantSubs.add('FoodNYC');
+    relevantSubs.add('food');
+    relevantSubs.add('AskCulinary');
+  }
+  
+  // Cooking & Recipe keywords
+  if (queryLower.match(/\b(cook|recipe|bake|ingredient|culinary|cookware|pan|pot|knife)\b/i)) {
+    relevantSubs.add('Cooking');
+    relevantSubs.add('AskCulinary');
+    relevantSubs.add('foodhacks');
+  }
+  
+  // Home & Kitchen Appliance keywords
+  if (queryLower.match(/\b(dishwasher|refrigerator|fridge|oven|stove|microwave|kitchen|appliance|washer|dryer|blender|mixer|toaster|coffee maker)\b/i)) {
+    relevantSubs.add('HomeImprovement');
+    relevantSubs.add('Appliances');
+    relevantSubs.add('ApartmentLiving');
+  }
+  
+  // Smart home keywords
+  if (queryLower.match(/\b(smart|automation|alexa|google home|homekit|hub|iot)\b/i)) {
+    relevantSubs.add('homeautomation');
+    relevantSubs.add('smarthome');
+  }
+  
+  // Audio keywords
+  if (queryLower.match(/\b(headphone|earphone|speaker|audio|sound|music|amp|dac|audiophile)\b/i)) {
+    relevantSubs.add('headphones');
+    relevantSubs.add('BudgetAudiophile');
+  }
+  
+  // Display keywords
+  if (queryLower.match(/\b(monitor|display|screen|panel|curved|ultrawide|gaming monitor)\b/i)) {
+    relevantSubs.add('monitors');
+  }
+  
+  // Computer keywords
+  if (queryLower.match(/\b(laptop|computer|pc|desktop|build|gaming pc|workstation)\b/i)) {
+    relevantSubs.add('laptops');
+    relevantSubs.add('buildapc');
+  }
+  
+  // Gaming laptop specific
+  if (queryLower.match(/\b(gaming laptop|gaming notebook|rtx|legion|rog|msi)\b/i)) {
+    relevantSubs.add('GamingLaptops');
+  }
+  
+  // TV keywords
+  if (queryLower.match(/\b(tv|television|4k|oled|qled|home theater|projector)\b/i)) {
+    relevantSubs.add('hometheater');
+    relevantSubs.add('4kTV');
+    relevantSubs.add('Televisions');
+  }
+  
+  // Interior design
+  if (queryLower.match(/\b(furniture|decor|design|interior|room|bedroom|living room)\b/i)) {
+    relevantSubs.add('InteriorDesign');
+  }
+  
+  // Location-specific subreddits (for city-specific queries)
+  const cityMapping = {
+    'nyc|new york|manhattan|brooklyn|queens|bronx': ['AskNYC', 'FoodNYC', 'nyc'],
+    'los angeles|la|hollywood|beverly hills': ['LosAngeles', 'FoodLosAngeles'],
+    'san francisco|sf|bay area': ['sanfrancisco', 'AskSF'],
+    'chicago': ['chicago', 'chicagofood'],
+    'boston': ['boston', 'BostonFood'],
+    'seattle': ['Seattle', 'SeattleWA'],
+    'portland': ['Portland', 'askportland'],
+    'austin': ['Austin'],
+    'miami': ['Miami'],
+    'philadelphia|philly': ['philadelphia'],
+    'washington dc|dc': ['washingtondc'],
+  };
+  
+  for (const [pattern, subs] of Object.entries(cityMapping)) {
+    if (new RegExp(pattern, 'i').test(queryLower)) {
+      subs.forEach(sub => relevantSubs.add(sub));
+      logger.debug('Matched city pattern', { pattern, addedSubs: subs });
+      break; // Only match one city
+    }
+  }
+  
+  const selected = Array.from(relevantSubs);
+  
+  // If we didn't match enough specific subs, add some general ones
+  if (selected.length < 5) {
+    const fallbackSubs = ['AskNYC', 'food', 'HomeImprovement', 'Appliances'];
+    for (const sub of fallbackSubs) {
+      if (!relevantSubs.has(sub) && selected.length < maxSubreddits) {
+        selected.push(sub);
+      }
+    }
+  }
+  
+  logger.debug('Selected relevant subreddits', { 
+    query: query.substring(0, 50), 
+    selected: selected.slice(0, maxSubreddits),
+    count: Math.min(selected.length, maxSubreddits)
+  });
+  
+  return selected.slice(0, maxSubreddits);
+}
 
 /**
  * Search Reddit for posts and comments related to the query
  * @param {string} query - Search query
- * @param {number} maxResults - Maximum number of results (default: 20)
- * @returns {Promise<Array>} Array of normalized post/comment objects
+ * @param {number} maxResults - Maximum number of results (default: from config)
+ * @returns {Promise<Array>} Array of normalized post objects
  */
-async function search(query, maxResults = MAX_RESULTS) {
+async function search(query, maxResults = null) {
   try {
-    logger.info('Searching Reddit', { query, maxResults });
+    // Use config value if not specified (default to 10 for quality)
+    const limit = maxResults || config.maxRedditResults || 10;
+    
+    logger.info('Searching Reddit', { query, maxResults: limit });
 
-    // Search in buying-related subreddits only
-    const postsPerSubreddit = Math.ceil(maxResults / BUYING_SUBREDDITS.length);
-    const posts = await searchInSubreddits(query, BUYING_SUBREDDITS, postsPerSubreddit);
+    // Select relevant subreddits based on query content (smart filtering)
+    const maxSubreddits = config.redditMaxSubreddits || 10;
+    const subredditsToSearch = selectRelevantSubreddits(query, maxSubreddits);
+    const batchSize = config.redditBatchSize || 5;
 
-    // For each top post, fetch top-level comments
-    const allSources = [...posts];
+    // Search in relevant subreddits only (parallelized)
+    const postsPerSubreddit = Math.ceil(limit / subredditsToSearch.length);
+    const posts = await searchInSubredditsParallel(query, subredditsToSearch, postsPerSubreddit, batchSize);
 
-    // Get comments for top 5 posts
-    const topPosts = posts.slice(0, 5);
-    for (const post of topPosts) {
-      await delay(REQUEST_DELAY);
-      const comments = await getPostComments(post.metadata.permalink, 5);
-      allSources.push(...comments);
-    }
+    // Return only posts (no comments - they're often low quality)
+    // Sort by score and take top results
+    const topPosts = posts
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit);
 
-    logger.info('Reddit search completed', { query, sources: allSources.length });
-    return allSources;
+    logger.info('Reddit search completed', { 
+      query, 
+      totalPosts: posts.length,
+      returnedPosts: topPosts.length 
+    });
+    
+    return topPosts;
   } catch (error) {
     return handleRedditError(error, query);
   }
@@ -97,7 +244,7 @@ async function searchPosts(query, limit = 20) {
 }
 
 /**
- * Search specific subreddits
+ * Search specific subreddits (legacy sequential version - kept for backward compatibility)
  * @param {string} query - Search query
  * @param {Array<string>} subreddits - Subreddit names
  * @param {number} limitPerSubreddit - Results per subreddit
@@ -135,6 +282,90 @@ async function searchInSubreddits(query, subreddits = BUYING_SUBREDDITS, limitPe
     return allPosts;
   } catch (error) {
     return handleRedditError(error, query);
+  }
+}
+
+/**
+ * Search specific subreddits in parallel with controlled concurrency
+ * @param {string} query - Search query
+ * @param {Array<string>} subreddits - Subreddit names
+ * @param {number} limitPerSubreddit - Results per subreddit
+ * @param {number} batchSize - Number of parallel requests (default: 5)
+ * @returns {Promise<Array>} Array of normalized post objects
+ */
+async function searchInSubredditsParallel(query, subreddits = BUYING_SUBREDDITS, limitPerSubreddit = 5, batchSize = 5) {
+  try {
+    logger.info('Starting parallel Reddit search', { query, subredditCount: subreddits.length, batchSize });
+    
+    const allPosts = [];
+    
+    // Process subreddits in batches to avoid overwhelming the API
+    for (let i = 0; i < subreddits.length; i += batchSize) {
+      const batch = subreddits.slice(i, i + batchSize);
+      
+      // Small delay between batches to be respectful to Reddit API
+      if (i > 0) {
+        await delay(500);
+      }
+      
+      const batchPromises = batch.map(subreddit => 
+        searchSubreddit(query, subreddit, limitPerSubreddit)
+      );
+      
+      const batchResults = await Promise.allSettled(batchPromises);
+      
+      batchResults.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          allPosts.push(...result.value);
+        } else {
+          logger.warn('Failed to search subreddit', { 
+            subreddit: batch[index], 
+            error: result.reason?.message 
+          });
+        }
+      });
+    }
+
+    logger.info('Reddit parallel search completed', { query, count: allPosts.length });
+    return allPosts;
+  } catch (error) {
+    logger.error('Reddit parallel search failed', { error: error.message });
+    return handleRedditError(error, query);
+  }
+}
+
+/**
+ * Search a single subreddit
+ * @param {string} query - Search query
+ * @param {string} subreddit - Subreddit name
+ * @param {number} limit - Maximum results
+ * @returns {Promise<Array>} Array of normalized post objects
+ */
+async function searchSubreddit(query, subreddit, limit = 5) {
+  try {
+    const response = await axios.get(`${REDDIT_API_BASE}/r/${subreddit}/search.json`, {
+      params: {
+        q: query,
+        restrict_sr: 'true',
+        sort: 'relevance',
+        limit,
+        t: 'all',
+      },
+      headers: {
+        'User-Agent': USER_AGENT,
+      },
+      timeout: config.requestTimeout || 5000,
+    });
+
+    const posts = response.data.data.children
+      .filter((child) => child.kind === 't3')
+      .map((child) => normalizePostData(child.data));
+
+    return posts;
+  } catch (error) {
+    // Log but don't throw - let Promise.allSettled handle it
+    logger.debug('Subreddit search failed', { subreddit, error: error.message });
+    return [];
   }
 }
 
@@ -330,6 +561,7 @@ module.exports = {
   search,
   searchPosts,
   searchInSubreddits,
+  selectRelevantSubreddits,
   getPostComments,
   getHotPosts,
   testConnection,

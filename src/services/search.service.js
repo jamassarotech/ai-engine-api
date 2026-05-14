@@ -152,14 +152,23 @@ async function storeSearchResult(originalQuery, normalizedQuery, slug, queryType
   try {
     logger.debug('Storing search result', { slug });
 
-    // Create query
-    const query = await queryRepository.create({
+    // Find or create query (handles duplicate slugs gracefully)
+    const { query, isNew } = await queryRepository.findOrCreate({
       original_query: originalQuery,
       normalized_query: normalizedQuery,
       slug,
       query_type: queryType,
       status: 'completed',
     });
+
+    // If updating existing query, delete old sources and result
+    if (!isNew) {
+      logger.debug('Updating existing query, deleting old data', { queryId: query.id });
+      await Promise.all([
+        sourceRepository.deleteByQueryId(query.id),
+        resultRepository.deleteByQueryId(query.id),
+      ]);
+    }
 
     // Store sources
     const sourcesToStore = analysisResult.sources.all.map(source => ({
@@ -190,7 +199,11 @@ async function storeSearchResult(originalQuery, normalizedQuery, slug, queryType
       ai_cost: analysisResult.metadata.ai_cost,
     });
 
-    logger.info('Search result stored', { queryId: query.id, resultId: result.id });
+    logger.info('Search result stored', { 
+      queryId: query.id, 
+      resultId: result.id, 
+      isUpdate: !isNew 
+    });
 
     return {
       queryId: query.id,

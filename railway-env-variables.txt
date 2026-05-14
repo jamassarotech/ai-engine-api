@@ -1,0 +1,22 @@
+# Environment Variables to Set in Railway API Service
+
+## Copy and paste these in the Railway dashboard Variables section:
+## Replace all placeholder values (YOUR_*) with your actual credentials
+
+NODE_ENV=production
+
+# API Keys
+YOUTUBE_API_KEY=YOUR_YOUTUBE_API_KEY_HERE
+OPENAI_API_KEY=YOUR_OPENAI_API_KEY_HERE
+
+# Database Connection (connects to your Postgres service)
+DB_HOST=postgres.railway.internal
+DB_PORT=5432
+DB_NAME=railway
+DB_USER=postgres
+DB_PASSWORD=YOUR_DB_PASSWORD_HERE
+
+# Optional
+LOG_LEVEL=info
+REQUEST_TIMEOUT=30000
+MAX_SOURCES_PER_QUERY=20

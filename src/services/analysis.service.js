@@ -13,14 +13,15 @@ const { ProviderError, AIError } = require('../utils/errors');
  * Fetch sources from all providers
  * @param {string} query - Search query
  * @param {Object} options - Fetch options
- * @param {number} options.maxYouTubeResults - Max YouTube videos (default: 10)
- * @param {number} options.maxRedditResults - Max Reddit sources (default: 20)
+ * @param {number} options.maxYouTubeResults - Max YouTube videos (default: from config)
+ * @param {number} options.maxRedditResults - Max Reddit sources (default: from config)
  * @returns {Promise<Object>} Sources from all providers
  */
 async function fetchSources(query, options = {}) {
+  const config = require('../config');
   const {
-    maxYouTubeResults = 10,
-    maxRedditResults = 20,
+    maxYouTubeResults = config.maxYoutubeResults || 8,
+    maxRedditResults = config.maxRedditResults || 15,
   } = options;
 
   logger.info('Fetching sources', { query, maxYouTubeResults, maxRedditResults });
