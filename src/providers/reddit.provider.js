@@ -268,7 +268,6 @@ async function searchPosts(query, limit = 20) {
         sort: "relevance",
         limit,
         t: "all", // all time
-        type: "link", // Only return posts, not comments
       },
       headers: {
         "User-Agent": USER_AGENT,
@@ -277,7 +276,7 @@ async function searchPosts(query, limit = 20) {
     });
 
     const posts = response.data.data.children
-      .filter((child) => child.kind === "t3") // t3 = post (double-check filter)
+      .filter((child) => child.kind === "t3") // t3 = post (exclude t1 = comments)
       .filter(
         (child) =>
           child.data.selftext !== "[removed]" &&
@@ -426,7 +425,6 @@ async function searchSubreddit(query, subreddit, limit = 5) {
           sort: "relevance",
           limit,
           t: "all",
-          type: "link", // Only return posts, not comments
         },
         headers: {
           "User-Agent": USER_AGENT,
@@ -436,7 +434,7 @@ async function searchSubreddit(query, subreddit, limit = 5) {
     );
 
     const posts = response.data.data.children
-      .filter((child) => child.kind === "t3") // Only posts
+      .filter((child) => child.kind === "t3") // Only posts (exclude t1 = comments)
       .filter(
         (child) =>
           child.data.selftext !== "[removed]" &&
