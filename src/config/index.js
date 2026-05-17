@@ -36,6 +36,12 @@ const config = {
     10,
   ), // Reduced from 1000
 
+  // Cost control settings
+  dailyBudgetUSD: parseFloat(process.env.DAILY_BUDGET_USD || "5.00"), // Daily OpenAI budget limit
+  monthlyBudgetUSD: parseFloat(process.env.MONTHLY_BUDGET_USD || "100.00"), // Monthly budget limit
+  costAlertThreshold: parseFloat(process.env.COST_ALERT_THRESHOLD || "0.80"), // Alert at 80% of budget
+  enableCostLimits: process.env.ENABLE_COST_LIMITS !== "false", // Enable by default
+
   // Optional settings
   logLevel: process.env.LOG_LEVEL || "info",
 };

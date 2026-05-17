@@ -1,12 +1,13 @@
-const normalizationService = require('./normalization.service');
-const cacheService = require('./cache.service');
-const analysisService = require('./analysis.service');
-const queryRepository = require('../repositories/query.repository');
-const resultRepository = require('../repositories/result.repository');
-const sourceRepository = require('../repositories/source.repository');
-const logRepository = require('../repositories/log.repository');
-const logger = require('../utils/logger');
-const { ValidationError, DatabaseError } = require('../utils/errors');
+const normalizationService = require("./normalization.service");
+const cacheService = require("./cache.service");
+const analysisService = require("./analysis.service");
+const costMonitorService = require("./cost-monitor.service");
+const queryRepository = require("../repositories/query.repository");
+const resultRepository = require("../repositories/result.repository");
+const sourceRepository = require("../repositories/source.repository");
+const logRepository = require("../repositories/log.repository");
+const logger = require("../utils/logger");
+const { ValidationError, DatabaseError } = require("../utils/errors");
 
 /**
  * Search Service
@@ -19,13 +20,11 @@ const { ValidationError, DatabaseError } = require('../utils/errors');
  * @param {Object} options - Search options
  * @param {boolean} options.skipCache - Skip cache lookup (default: false)
  * @param {number} options.cacheMaxAgeHours - Max cache age in hours (default: 24)
+ * @param {string} [options.userId] - User ID from frontend localStorage
  * @returns {Promise<Object>} Search result
  */
 async function executeSearch(rawQuery, options = {}) {
-  const {
-    skipCache = false,
-    cacheMaxAgeHours = 24,
-  } = options;
+  const { skipCache = false, cacheMaxAgeHours = 24, userId } = options;
 
   const startTime = Date.now();
   let cached = false;
@@ -35,7 +34,7 @@ async function executeSearch(rawQuery, options = {}) {
   let errorMessage = null;
 
   try {
-    logger.info('Search request received', { query: rawQuery });
+    logger.info("Search request received", { query: rawQuery });
 
     // Step 1: Validate query
     const validation = normalizationService.validateQuery(rawQuery);
@@ -47,14 +46,19 @@ async function executeSearch(rawQuery, options = {}) {
     const processedQuery = normalizationService.processQuery(rawQuery);
     const { normalized, slug, type } = processedQuery;
 
-    logger.debug('Query processed', { normalized, slug, type });
+    logger.debug("Query processed", { normalized, slug, type });
 
     // Step 3: Check cache
     if (!skipCache) {
       const cachedResult = await cacheService.getCachedResult(normalized);
 
-      if (cachedResult && cacheService.isCacheValid(cachedResult, cacheMaxAgeHours)) {
-        logger.info('Returning cached result', { queryId: cachedResult.query.id });
+      if (
+        cachedResult &&
+        cacheService.isCacheValid(cachedResult, cacheMaxAgeHours)
+      ) {
+        logger.info("Returning cached result", {
+          queryId: cachedResult.query.id,
+        });
 
         // Log cache hit
         await logRepository.create({
@@ -72,10 +76,17 @@ async function executeSearch(rawQuery, options = {}) {
     }
 
     // Step 4: Fetch fresh data and analyze
-    logger.info('Cache miss - fetching fresh data', { normalized });
+    logger.info("Cache miss - fetching fresh data", { normalized });
+
+    // Step 4a: Check budget before making AI API call
+    const budgetCheck = await costMonitorService.authorizeRequest();
+    if (!budgetCheck.authorized) {
+      throw new ValidationError(budgetCheck.message);
+    }
 
     // Perform complete analysis
-    const analysisResult = await analysisService.performCompleteAnalysis(normalized);
+    const analysisResult =
+      await analysisService.performCompleteAnalysis(normalized);
 
     tokensInput = analysisResult.metadata.tokens_input;
     tokensOutput = analysisResult.metadata.tokens_output;
@@ -87,7 +98,8 @@ async function executeSearch(rawQuery, options = {}) {
       normalized,
       slug,
       type,
-      analysisResult
+      analysisResult,
+      userId
     );
 
     // Step 6: Log search
@@ -101,19 +113,18 @@ async function executeSearch(rawQuery, options = {}) {
       ai_cost: aiCost,
     });
 
-    logger.info('Search completed successfully', {
+    logger.info("Search completed successfully", {
       queryId: storedResult.queryId,
       cached: false,
       latency: Date.now() - startTime,
     });
 
     return formatFreshResponse(storedResult, analysisResult);
-
   } catch (error) {
     errorMessage = error.message;
     const latency = Date.now() - startTime;
 
-    logger.error('Search failed', {
+    logger.error("Search failed", {
       error: error.message,
       query: rawQuery,
       latency,
@@ -132,7 +143,7 @@ async function executeSearch(rawQuery, options = {}) {
         error_message: errorMessage,
       });
     } catch (logError) {
-      logger.error('Failed to log error', { error: logError.message });
+      logger.error("Failed to log error", { error: logError.message });
     }
 
     throw error;
@@ -146,11 +157,19 @@ async function executeSearch(rawQuery, options = {}) {
  * @param {string} slug - URL slug
  * @param {string} queryType - Query type
  * @param {Object} analysisResult - Analysis result from analysis service
+ * @param {string} [userId] - User ID from frontend localStorage
  * @returns {Promise<Object>} Stored result IDs
  */
-async function storeSearchResult(originalQuery, normalizedQuery, slug, queryType, analysisResult) {
+async function storeSearchResult(
+  originalQuery,
+  normalizedQuery,
+  slug,
+  queryType,
+  analysisResult,
+  userId
+) {
   try {
-    logger.debug('Storing search result', { slug });
+    logger.debug("Storing search result", { slug });
 
     // Find or create query (handles duplicate slugs gracefully)
     const { query, isNew } = await queryRepository.findOrCreate({
@@ -158,12 +177,15 @@ async function storeSearchResult(originalQuery, normalizedQuery, slug, queryType
       normalized_query: normalizedQuery,
       slug,
       query_type: queryType,
-      status: 'completed',
+      status: "completed",
+      user_id: userId,
     });
 
     // If updating existing query, delete old sources and result
     if (!isNew) {
-      logger.debug('Updating existing query, deleting old data', { queryId: query.id });
+      logger.debug("Updating existing query, deleting old data", {
+        queryId: query.id,
+      });
       await Promise.all([
         sourceRepository.deleteByQueryId(query.id),
         resultRepository.deleteByQueryId(query.id),
@@ -171,7 +193,7 @@ async function storeSearchResult(originalQuery, normalizedQuery, slug, queryType
     }
 
     // Store sources
-    const sourcesToStore = analysisResult.sources.all.map(source => ({
+    const sourcesToStore = analysisResult.sources.all.map((source) => ({
       query_id: query.id,
       source_type: source.source_type,
       title: source.title,
@@ -199,10 +221,10 @@ async function storeSearchResult(originalQuery, normalizedQuery, slug, queryType
       ai_cost: analysisResult.metadata.ai_cost,
     });
 
-    logger.info('Search result stored', { 
-      queryId: query.id, 
-      resultId: result.id, 
-      isUpdate: !isNew 
+    logger.info("Search result stored", {
+      queryId: query.id,
+      resultId: result.id,
+      isUpdate: !isNew,
     });
 
     return {
@@ -211,8 +233,8 @@ async function storeSearchResult(originalQuery, normalizedQuery, slug, queryType
       sourceCount: sourcesToStore.length,
     };
   } catch (error) {
-    logger.error('Failed to store search result', { error: error.message });
-    throw new DatabaseError('Failed to store search result', error);
+    logger.error("Failed to store search result", { error: error.message });
+    throw new DatabaseError("Failed to store search result", error);
   }
 }
 
@@ -226,11 +248,11 @@ function formatCachedResponse(cachedResult) {
 
   // Group sources by type
   const youtubeSources = sources
-    .filter(s => s.source_type === 'youtube')
+    .filter((s) => s.source_type === "youtube")
     .map(formatSource);
 
   const redditSources = sources
-    .filter(s => s.source_type === 'reddit')
+    .filter((s) => s.source_type === "reddit")
     .map(formatSource);
 
   return {
@@ -314,7 +336,10 @@ async function getSearchBySlug(slug) {
 
     return formatCachedResponse(cachedResult);
   } catch (error) {
-    logger.error('Failed to get search by slug', { error: error.message, slug });
+    logger.error("Failed to get search by slug", {
+      error: error.message,
+      slug,
+    });
     throw error;
   }
 }

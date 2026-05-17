@@ -3,22 +3,31 @@ const path = require('path');
 const { pool, testConnection, closePool } = require('../src/db/connection');
 const logger = require('../src/utils/logger');
 
-async function runMigration() {
+async function runMigrations() {
   try {
     // Test connection first
     logger.info('Testing database connection...');
     await testConnection();
 
-    // Read migration file
-    const migrationPath = path.join(__dirname, '../src/db/migrations/001_initial_schema.sql');
-    const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
+    // Get all migration files
+    const migrationsDir = path.join(__dirname, '../src/db/migrations');
+    const files = fs.readdirSync(migrationsDir)
+      .filter(file => file.endsWith('.sql'))
+      .sort(); // Sort to run in order
 
-    logger.info('Running migration: 001_initial_schema.sql');
+    logger.info(`Found ${files.length} migration file(s)`);
 
-    // Execute migration
-    await pool.query(migrationSQL);
+    // Run each migration
+    for (const file of files) {
+      const migrationPath = path.join(migrationsDir, file);
+      const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
 
-    logger.info('Migration completed successfully');
+      logger.info(`Running migration: ${file}`);
+      await pool.query(migrationSQL);
+      logger.info(`✓ ${file} completed`);
+    }
+
+    logger.info('All migrations completed successfully');
 
     // Close pool
     await closePool();
@@ -30,5 +39,5 @@ async function runMigration() {
   }
 }
 
-// Run migration
-runMigration();
+// Run migrations
+runMigrations();

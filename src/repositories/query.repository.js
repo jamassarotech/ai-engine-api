@@ -15,17 +15,18 @@ const logger = require('../utils/logger');
  * @param {string} data.slug - URL-friendly slug
  * @param {string} data.query_type - Type of query (product, comparison, etc.)
  * @param {string} [data.status='completed'] - Query status
+ * @param {string} [data.user_id] - User ID from frontend localStorage
  * @returns {Promise<Object>} Created query object
  */
 async function create(data) {
-  const { original_query, normalized_query, slug, query_type, status = 'completed' } = data;
+  const { original_query, normalized_query, slug, query_type, status = 'completed', user_id } = data;
 
   try {
     const result = await pool.query(
-      `INSERT INTO queries (original_query, normalized_query, slug, query_type, status)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO queries (original_query, normalized_query, slug, query_type, status, user_id)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
-      [original_query, normalized_query, slug, query_type, status]
+      [original_query, normalized_query, slug, query_type, status, user_id]
     );
 
     logger.debug('Query created', { queryId: result.rows[0].id, slug });
@@ -42,7 +43,7 @@ async function create(data) {
  * @returns {Promise<Object>} Query object with isNew flag
  */
 async function findOrCreate(data) {
-  const { original_query, normalized_query, slug, query_type, status = 'completed' } = data;
+  const { original_query, normalized_query, slug, query_type, status = 'completed', user_id } = data;
 
   try {
     // First, try to find by slug
@@ -56,11 +57,12 @@ async function findOrCreate(data) {
          SET original_query = $1, 
              normalized_query = $2, 
              query_type = $3, 
-             status = $4, 
+             status = $4,
+             user_id = $5,
              updated_at = NOW()
-         WHERE slug = $5
+         WHERE slug = $6
          RETURNING *`,
-        [original_query, normalized_query, query_type, status, slug]
+        [original_query, normalized_query, query_type, status, user_id, slug]
       );
       
       return {
@@ -71,10 +73,10 @@ async function findOrCreate(data) {
 
     // If not found, create new
     const result = await pool.query(
-      `INSERT INTO queries (original_query, normalized_query, slug, query_type, status)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO queries (original_query, normalized_query, slug, query_type, status, user_id)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
-      [original_query, normalized_query, slug, query_type, status]
+      [original_query, normalized_query, slug, query_type, status, user_id]
     );
 
     logger.debug('Query created', { queryId: result.rows[0].id, slug });
@@ -205,6 +207,49 @@ async function getByType(queryType, limit = 10) {
   }
 }
 
+/**
+ * Get queries by user ID (for user search history)
+ * @param {string} userId - User ID from frontend localStorage
+ * @param {number} limit - Number of queries to fetch (default: 20)
+ * @param {number} offset - Pagination offset (default: 0)
+ * @returns {Promise<Object>} Object with queries array and total count
+ */
+async function findByUserId(userId, limit = 20, offset = 0) {
+  try {
+    // Get total count for pagination
+    const countResult = await pool.query(
+      `SELECT COUNT(*) as total FROM queries WHERE user_id = $1`,
+      [userId]
+    );
+
+    // Get paginated queries
+    const queriesResult = await pool.query(
+      `SELECT id, original_query, normalized_query, slug, query_type, status, created_at, updated_at
+       FROM queries 
+       WHERE user_id = $1 
+       ORDER BY created_at DESC 
+       LIMIT $2 OFFSET $3`,
+      [userId, limit, offset]
+    );
+
+    logger.debug('Queries fetched for user', { 
+      userId, 
+      count: queriesResult.rows.length,
+      total: countResult.rows[0].total 
+    });
+
+    return {
+      queries: queriesResult.rows,
+      total: parseInt(countResult.rows[0].total, 10),
+      limit,
+      offset,
+    };
+  } catch (error) {
+    logger.error('Failed to get queries by user ID', { error: error.message, userId });
+    throw new DatabaseError('Failed to get queries by user ID', error);
+  }
+}
+
 module.exports = {
   create,
   findOrCreate,
@@ -214,4 +259,5 @@ module.exports = {
   updateStatus,
   getRecent,
   getByType,
+  findByUserId,
 };

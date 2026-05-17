@@ -1,4 +1,5 @@
 const searchService = require('../services/search.service');
+const queryRepository = require('../repositories/query.repository');
 const { searchRequestSchema } = require('../utils/validators');
 const logger = require('../utils/logger');
 const { ValidationError } = require('../utils/errors');
@@ -24,10 +25,10 @@ async function search(req, res, next) {
       throw new ValidationError(errorMessage);
     }
 
-    const { query } = validation.data;
+    const { query, userId } = validation.data;
 
     // Execute search
-    const result = await searchService.executeSearch(query);
+    const result = await searchService.executeSearch(query, { userId });
 
     // Return success response
     res.status(200).json(result);
@@ -61,7 +62,43 @@ async function getBySlug(req, res, next) {
   }
 }
 
+/**
+ * GET /api/users/:userId/searches
+ * Get user's search history
+ */
+async function getUserHistory(req, res, next) {
+  try {
+    const { userId } = req.params;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = parseInt(req.query.offset) || 0;
+
+    // Validate pagination parameters
+    if (limit < 1 || limit > 100) {
+      throw new ValidationError('Limit must be between 1 and 100');
+    }
+
+    if (offset < 0) {
+      throw new ValidationError('Offset must be non-negative');
+    }
+
+    // Fetch user's search history
+    const result = await queryRepository.findByUserId(userId, limit, offset);
+
+    res.status(200).json({
+      userId,
+      searches: result.queries,
+      total: result.total,
+      limit: result.limit,
+      offset: result.offset,
+    });
+
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   search,
   getBySlug,
+  getUserHistory,
 };
