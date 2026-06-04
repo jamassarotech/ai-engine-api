@@ -3,8 +3,6 @@
  * Generate Amazon search URLs from product names
  */
 
-const { fetchProductImages } = require("../services/image.service");
-
 /**
  * Generate Amazon search URL from product name
  * @param {string} productName - Product name to search for
@@ -57,47 +55,7 @@ function enrichRecommendations(recommendations) {
   });
 }
 
-/**
- * Enrich recommendations with Amazon URLs and product images
- * @param {Array} recommendations - Array of recommendation objects
- * @returns {Promise<Array>} Recommendations with amazonUrl and imageUrl added
- *
- * @example
- * await enrichRecommendationsWithImages([{name: 'Sony WH-1000XM5', summary: '...', score: 95}])
- * // => [{name: 'Sony WH-1000XM5', summary: '...', score: 95, amazonUrl: '...', imageUrl: '...'}]
- */
-async function enrichRecommendationsWithImages(recommendations) {
-  if (!Array.isArray(recommendations)) {
-    return [];
-  }
-
-  // First, add Amazon URLs
-  const withUrls = enrichRecommendations(recommendations);
-
-  // If no recommendations, return early
-  if (withUrls.length === 0) {
-    return [];
-  }
-
-  // Fetch images for all products in parallel
-  const productNames = withUrls.map((rec) => rec.name);
-  const imageUrls = await fetchProductImages(productNames);
-
-  // Add image URLs to recommendations
-  return withUrls.map((rec, index) => {
-    const imageUrl = imageUrls[index];
-    if (imageUrl) {
-      return {
-        ...rec,
-        imageUrl,
-      };
-    }
-    return rec;
-  });
-}
-
 module.exports = {
   generateAmazonUrl,
   enrichRecommendations,
-  enrichRecommendationsWithImages,
 };
