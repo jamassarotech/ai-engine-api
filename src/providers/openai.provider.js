@@ -1,9 +1,9 @@
-const OpenAI = require('openai');
-const { zodResponseFormat } = require('openai/helpers/zod');
-const config = require('../config');
-const logger = require('../utils/logger');
-const { AIError } = require('../utils/errors');
-const { aiAnalysisSchema } = require('../utils/schemas');
+const OpenAI = require("openai");
+const { zodResponseFormat } = require("openai/helpers/zod");
+const config = require("../config");
+const logger = require("../utils/logger");
+const { AIError } = require("../utils/errors");
+const { aiAnalysisSchema } = require("../utils/schemas");
 
 /**
  * OpenAI Provider
@@ -19,7 +19,7 @@ let openai = null;
 function getClient() {
   if (!openai) {
     if (!config.openaiApiKey) {
-      throw new AIError('OpenAI API key not configured');
+      throw new AIError("OpenAI API key not configured");
     }
     openai = new OpenAI({ apiKey: config.openaiApiKey });
   }
@@ -36,17 +36,18 @@ function getClient() {
  * @returns {Promise<Object>} Analysis result with metadata
  */
 async function generateAnalysis(query, sources, options = {}) {
-  const {
-    model = 'gpt-4o',
-    temperature = 0.3,
-  } = options;
+  const { model = "gpt-4o", temperature = 0.3 } = options;
 
   if (!sources || sources.length === 0) {
-    throw new AIError('No sources provided for analysis');
+    throw new AIError("No sources provided for analysis");
   }
 
   try {
-    logger.info('Generating AI analysis', { query, sourceCount: sources.length, model });
+    logger.info("Generating AI analysis", {
+      query,
+      sourceCount: sources.length,
+      model,
+    });
 
     const startTime = Date.now();
 
@@ -63,10 +64,10 @@ async function generateAnalysis(query, sources, options = {}) {
       model,
       temperature,
       messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
       ],
-      response_format: zodResponseFormat(aiAnalysisSchema, 'buying_analysis'),
+      response_format: zodResponseFormat(aiAnalysisSchema, "buying_analysis"),
     });
 
     const latencyMs = Date.now() - startTime;
@@ -74,7 +75,7 @@ async function generateAnalysis(query, sources, options = {}) {
     // Extract result
     const message = completion.choices[0]?.message;
     if (!message?.content) {
-      throw new AIError('No response from OpenAI');
+      throw new AIError("No response from OpenAI");
     }
 
     // Parse JSON response
@@ -85,9 +86,13 @@ async function generateAnalysis(query, sources, options = {}) {
 
     // Calculate cost (approximate)
     const usage = completion.usage;
-    const cost = calculateCost(model, usage.prompt_tokens, usage.completion_tokens);
+    const cost = calculateCost(
+      model,
+      usage.prompt_tokens,
+      usage.completion_tokens,
+    );
 
-    logger.info('AI analysis completed', {
+    logger.info("AI analysis completed", {
       query,
       latencyMs,
       tokensInput: usage.prompt_tokens,
@@ -117,23 +122,25 @@ async function generateAnalysis(query, sources, options = {}) {
  */
 function formatSourcesForPrompt(sources) {
   const maxContentLength = config.sourceContentMaxLength || 800;
-  
+
   return sources
     .map((source, index) => {
       const type = source.source_type.toUpperCase();
-      const date = source.published_at ? new Date(source.published_at).toLocaleDateString() : 'Unknown date';
-      
+      const date = source.published_at
+        ? new Date(source.published_at).toLocaleDateString()
+        : "Unknown date";
+
       return `
 [${index + 1}] ${type} | ${source.title}
-Author: ${source.author || 'Unknown'}
+Author: ${source.author || "Unknown"}
 Published: ${date}
-Score: ${source.score?.toLocaleString() || 0} ${source.source_type === 'youtube' ? 'views' : 'upvotes'}
+Score: ${source.score?.toLocaleString() || 0} ${source.source_type === "youtube" ? "views" : "upvotes"}
 URL: ${source.url}
-Content: ${source.text ? source.text.substring(0, maxContentLength) : 'No content available'}
-${source.text && source.text.length > maxContentLength ? '...' : ''}
+Content: ${source.text ? source.text.substring(0, maxContentLength) : "No content available"}
+${source.text && source.text.length > maxContentLength ? "..." : ""}
 ---`;
     })
-    .join('\n');
+    .join("\n");
 }
 
 /**
@@ -148,6 +155,7 @@ Your analysis should:
 - Highlight both positive and negative aspects
 - Include important warnings or caveats
 - Extract notable quotes that support key points
+- Provide specific product recommendations when applicable
 - Provide a clear, actionable verdict
 - Base confidence on source quality, recency, and consensus
 
@@ -164,8 +172,16 @@ Response format:
 - Pros: List positive aspects with source references
 - Cons: List negative aspects with source references
 - Warnings: Flag important caveats (price, compatibility, alternatives)
+- Recommendations: List 3-5 specific products with EXACT model names/numbers (e.g., "Sony WH-1000XM5", not "Sony headphones"). Only include if query is product-related. Use empty array [] for non-product queries like "how to fix" or troubleshooting questions.
 - Quotes: Extract 3-5 impactful quotes from sources
-- Confidence: High (strong consensus), Medium (mixed), Low (limited/conflicting data)`;
+- Confidence: High (strong consensus), Medium (mixed), Low (limited/conflicting data)
+
+IMPORTANT for Recommendations:
+- Always use SPECIFIC model names and numbers (e.g., "Sony WH-1000XM5", "LG C4 OLED 65-inch", "Apple AirPods Pro 2nd Gen")
+- Do NOT use generic names like "Sony headphones" or "budget option"
+- Include 3-5 products ranked by score (0-100)
+- Base scores on source consensus, reviews, and analysis
+- Return empty array [] if query is not about buying/comparing products`;
 }
 
 /**
@@ -194,14 +210,14 @@ Based on these sources, generate a comprehensive buying analysis for: "${query}"
 function calculateCost(model, inputTokens, outputTokens) {
   // Pricing as of 2026 (approximate)
   const pricing = {
-    'gpt-4o': { input: 2.5 / 1_000_000, output: 10 / 1_000_000 },
-    'gpt-4o-mini': { input: 0.15 / 1_000_000, output: 0.6 / 1_000_000 },
-    'gpt-4-turbo': { input: 10 / 1_000_000, output: 30 / 1_000_000 },
-    'gpt-4': { input: 30 / 1_000_000, output: 60 / 1_000_000 },
+    "gpt-4o": { input: 2.5 / 1_000_000, output: 10 / 1_000_000 },
+    "gpt-4o-mini": { input: 0.15 / 1_000_000, output: 0.6 / 1_000_000 },
+    "gpt-4-turbo": { input: 10 / 1_000_000, output: 30 / 1_000_000 },
+    "gpt-4": { input: 30 / 1_000_000, output: 60 / 1_000_000 },
   };
 
-  const rates = pricing[model] || pricing['gpt-4o'];
-  const cost = (inputTokens * rates.input) + (outputTokens * rates.output);
+  const rates = pricing[model] || pricing["gpt-4o"];
+  const cost = inputTokens * rates.input + outputTokens * rates.output;
 
   return parseFloat(cost.toFixed(6));
 }
@@ -211,22 +227,22 @@ function calculateCost(model, inputTokens, outputTokens) {
  * @param {string} prompt - Test prompt
  * @returns {Promise<Object>} Test result
  */
-async function testCompletion(prompt = 'Say hello') {
+async function testCompletion(prompt = "Say hello") {
   try {
     const client = getClient();
     const completion = await client.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: prompt }],
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
       max_tokens: 50,
     });
 
-    logger.info('OpenAI test completion successful');
+    logger.info("OpenAI test completion successful");
     return {
       success: true,
       response: completion.choices[0]?.message?.content,
     };
   } catch (error) {
-    logger.error('OpenAI test failed', { error: error.message });
+    logger.error("OpenAI test failed", { error: error.message });
     return {
       success: false,
       error: error.message,
@@ -246,42 +262,63 @@ function handleOpenAIError(error, context) {
 
     // Rate limit
     if (status === 429) {
-      logger.error('OpenAI rate limit exceeded', { context });
-      throw new AIError('OpenAI rate limit exceeded. Please try again later.', error);
+      logger.error("OpenAI rate limit exceeded", { context });
+      throw new AIError(
+        "OpenAI rate limit exceeded. Please try again later.",
+        error,
+      );
     }
 
     // Authentication
     if (status === 401) {
-      logger.error('OpenAI authentication failed', { context });
-      throw new AIError('OpenAI API authentication failed', error);
+      logger.error("OpenAI authentication failed", { context });
+      throw new AIError("OpenAI API authentication failed", error);
     }
 
     // Service error
     if (status >= 500) {
-      logger.error('OpenAI service error', { status, message, context });
-      throw new AIError('OpenAI service temporarily unavailable', error);
+      logger.error("OpenAI service error", { status, message, context });
+      throw new AIError("OpenAI service temporarily unavailable", error);
     }
 
     // Other errors
-    logger.error('OpenAI API error', { status, message, context });
+    logger.error("OpenAI API error", { status, message, context });
     throw new AIError(`OpenAI API error: ${message}`, error);
   }
 
   // Network or other errors
-  if (error.code === 'ECONNABORTED') {
-    logger.error('OpenAI request timeout', { context });
-    throw new AIError('OpenAI request timeout', error);
+  if (error.code === "ECONNABORTED") {
+    logger.error("OpenAI request timeout", { context });
+    throw new AIError("OpenAI request timeout", error);
   }
 
   // Parsing error
   if (error instanceof SyntaxError) {
-    logger.error('Failed to parse OpenAI response', { error: error.message, context });
-    throw new AIError('Failed to parse AI response', error);
+    logger.error("Failed to parse OpenAI response", {
+      error: error.message,
+      context,
+    });
+    throw new AIError("Failed to parse AI response", error);
+  }
+
+  // Zod validation error
+  if (error.name === "ZodError") {
+    logger.error("AI response validation failed", {
+      error: error.message,
+      issues: error.issues,
+      context,
+    });
+    throw new AIError("AI response does not match expected format", error);
   }
 
   // Unknown error
-  logger.error('OpenAI provider error', { error: error.message, context });
-  throw new AIError('AI analysis failed', error);
+  logger.error("OpenAI provider error", {
+    error: error.message,
+    errorName: error.name,
+    errorStack: error.stack,
+    context,
+  });
+  throw new AIError("AI analysis failed", error);
 }
 
 module.exports = {

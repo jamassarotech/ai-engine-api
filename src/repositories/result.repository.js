@@ -1,6 +1,6 @@
-const { pool } = require('../db/connection');
-const { DatabaseError } = require('../utils/errors');
-const logger = require('../utils/logger');
+const { pool } = require("../db/connection");
+const { DatabaseError } = require("../utils/errors");
+const logger = require("../utils/logger");
 
 /**
  * Result Repository
@@ -15,6 +15,7 @@ const logger = require('../utils/logger');
  * @param {Array} data.pros - Array of pros
  * @param {Array} data.cons - Array of cons
  * @param {Array} data.warnings - Array of warnings
+ * @param {Array} data.recommendations - Array of product recommendations
  * @param {Array} data.quotes - Array of quotes
  * @param {string} data.confidence - Confidence level (high, medium, low)
  * @param {string} data.ai_model - AI model used
@@ -30,6 +31,7 @@ async function create(data) {
     pros = [],
     cons = [],
     warnings = [],
+    recommendations = [],
     quotes = [],
     confidence,
     ai_model,
@@ -41,9 +43,9 @@ async function create(data) {
   try {
     const result = await pool.query(
       `INSERT INTO query_results 
-       (query_id, summary, pros_json, cons_json, warnings_json, quotes_json, 
+       (query_id, summary, pros_json, cons_json, warnings_json, recommendations_json, quotes_json, 
         confidence, ai_model, tokens_input, tokens_output, ai_cost)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING *`,
       [
         query_id,
@@ -51,20 +53,27 @@ async function create(data) {
         JSON.stringify(pros),
         JSON.stringify(cons),
         JSON.stringify(warnings),
+        JSON.stringify(recommendations),
         JSON.stringify(quotes),
         confidence,
         ai_model,
         tokens_input,
         tokens_output,
         ai_cost,
-      ]
+      ],
     );
 
-    logger.debug('Query result created', { queryId: query_id, resultId: result.rows[0].id });
+    logger.debug("Query result created", {
+      queryId: query_id,
+      resultId: result.rows[0].id,
+    });
     return result.rows[0];
   } catch (error) {
-    logger.error('Failed to create query result', { error: error.message, query_id });
-    throw new DatabaseError('Failed to create query result', error);
+    logger.error("Failed to create query result", {
+      error: error.message,
+      query_id,
+    });
+    throw new DatabaseError("Failed to create query result", error);
   }
 }
 
@@ -77,13 +86,16 @@ async function findByQueryId(queryId) {
   try {
     const result = await pool.query(
       `SELECT * FROM query_results WHERE query_id = $1`,
-      [queryId]
+      [queryId],
     );
 
     return result.rows[0] || null;
   } catch (error) {
-    logger.error('Failed to find result by query ID', { error: error.message, queryId });
-    throw new DatabaseError('Failed to find result', error);
+    logger.error("Failed to find result by query ID", {
+      error: error.message,
+      queryId,
+    });
+    throw new DatabaseError("Failed to find result", error);
   }
 }
 
@@ -96,13 +108,13 @@ async function findById(id) {
   try {
     const result = await pool.query(
       `SELECT * FROM query_results WHERE id = $1`,
-      [id]
+      [id],
     );
 
     return result.rows[0] || null;
   } catch (error) {
-    logger.error('Failed to find result by ID', { error: error.message, id });
-    throw new DatabaseError('Failed to find result', error);
+    logger.error("Failed to find result by ID", { error: error.message, id });
+    throw new DatabaseError("Failed to find result", error);
   }
 }
 
@@ -118,6 +130,7 @@ async function update(queryId, data) {
     pros,
     cons,
     warnings,
+    recommendations,
     quotes,
     confidence,
     ai_model,
@@ -130,15 +143,16 @@ async function update(queryId, data) {
     const result = await pool.query(
       `UPDATE query_results 
        SET summary = $1, pros_json = $2, cons_json = $3, warnings_json = $4, 
-           quotes_json = $5, confidence = $6, ai_model = $7, 
-           tokens_input = $8, tokens_output = $9, ai_cost = $10, generated_at = NOW()
-       WHERE query_id = $11
+           recommendations_json = $5, quotes_json = $6, confidence = $7, ai_model = $8, 
+           tokens_input = $9, tokens_output = $10, ai_cost = $11, generated_at = NOW()
+       WHERE query_id = $12
        RETURNING *`,
       [
         JSON.stringify(summary),
         JSON.stringify(pros),
         JSON.stringify(cons),
         JSON.stringify(warnings),
+        JSON.stringify(recommendations || []),
         JSON.stringify(quotes),
         confidence,
         ai_model,
@@ -146,14 +160,17 @@ async function update(queryId, data) {
         tokens_output,
         ai_cost,
         queryId,
-      ]
+      ],
     );
 
-    logger.debug('Query result updated', { queryId });
+    logger.debug("Query result updated", { queryId });
     return result.rows[0];
   } catch (error) {
-    logger.error('Failed to update query result', { error: error.message, queryId });
-    throw new DatabaseError('Failed to update query result', error);
+    logger.error("Failed to update query result", {
+      error: error.message,
+      queryId,
+    });
+    throw new DatabaseError("Failed to update query result", error);
   }
 }
 
@@ -164,16 +181,18 @@ async function update(queryId, data) {
  */
 async function deleteByQueryId(queryId) {
   try {
-    await pool.query(
-      `DELETE FROM query_results WHERE query_id = $1`,
-      [queryId]
-    );
+    await pool.query(`DELETE FROM query_results WHERE query_id = $1`, [
+      queryId,
+    ]);
 
-    logger.debug('Query result deleted', { queryId });
+    logger.debug("Query result deleted", { queryId });
     return true;
   } catch (error) {
-    logger.error('Failed to delete query result', { error: error.message, queryId });
-    throw new DatabaseError('Failed to delete query result', error);
+    logger.error("Failed to delete query result", {
+      error: error.message,
+      queryId,
+    });
+    throw new DatabaseError("Failed to delete query result", error);
   }
 }
 
@@ -187,13 +206,16 @@ async function getByConfidence(confidence, limit = 10) {
   try {
     const result = await pool.query(
       `SELECT * FROM query_results WHERE confidence = $1 ORDER BY generated_at DESC LIMIT $2`,
-      [confidence, limit]
+      [confidence, limit],
     );
 
     return result.rows;
   } catch (error) {
-    logger.error('Failed to get results by confidence', { error: error.message, confidence });
-    throw new DatabaseError('Failed to get results by confidence', error);
+    logger.error("Failed to get results by confidence", {
+      error: error.message,
+      confidence,
+    });
+    throw new DatabaseError("Failed to get results by confidence", error);
   }
 }
 
