@@ -23,6 +23,8 @@ const config = {
   // External APIs
   youtubeApiKey: process.env.YOUTUBE_API_KEY || "",
   openaiApiKey: process.env.OPENAI_API_KEY || "",
+  googleSearchApiKey: process.env.GOOGLE_SEARCH_API_KEY || "",
+  googleSearchEngineId: process.env.GOOGLE_SEARCH_ENGINE_ID || "",
 
   // Performance settings
   requestTimeout: parseInt(process.env.REQUEST_TIMEOUT || "10000", 10), // Reduced from 30s to 10s

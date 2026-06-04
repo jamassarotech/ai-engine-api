@@ -8,6 +8,7 @@ const sourceRepository = require("../repositories/source.repository");
 const logRepository = require("../repositories/log.repository");
 const logger = require("../utils/logger");
 const { ValidationError, DatabaseError } = require("../utils/errors");
+const { enrichRecommendations } = require("../utils/amazon");
 
 /**
  * Search Service
@@ -71,7 +72,7 @@ async function executeSearch(rawQuery, options = {}) {
           ai_cost: null,
         });
 
-        return formatCachedResponse(cachedResult);
+        return await formatCachedResponse(cachedResult);
       }
     }
 
@@ -99,7 +100,7 @@ async function executeSearch(rawQuery, options = {}) {
       slug,
       type,
       analysisResult,
-      userId
+      userId,
     );
 
     // Step 6: Log search
@@ -119,7 +120,7 @@ async function executeSearch(rawQuery, options = {}) {
       latency: Date.now() - startTime,
     });
 
-    return formatFreshResponse(storedResult, analysisResult);
+    return await formatFreshResponse(storedResult, analysisResult);
   } catch (error) {
     errorMessage = error.message;
     const latency = Date.now() - startTime;
@@ -166,7 +167,7 @@ async function storeSearchResult(
   slug,
   queryType,
   analysisResult,
-  userId
+  userId,
 ) {
   try {
     logger.debug("Storing search result", { slug });
@@ -213,6 +214,7 @@ async function storeSearchResult(
       pros: analysisResult.analysis.pros,
       cons: analysisResult.analysis.cons,
       warnings: analysisResult.analysis.warnings,
+      recommendations: analysisResult.analysis.recommendations,
       quotes: analysisResult.analysis.quotes,
       confidence: analysisResult.analysis.confidence,
       ai_model: analysisResult.metadata.model,
@@ -241,9 +243,9 @@ async function storeSearchResult(
 /**
  * Format cached response
  * @param {Object} cachedResult - Cached result from cache service
- * @returns {Object} Formatted response
+ * @returns {Promise<Object>} Formatted response
  */
-function formatCachedResponse(cachedResult) {
+async function formatCachedResponse(cachedResult) {
   const { query, result, sources } = cachedResult;
 
   // Group sources by type
@@ -267,6 +269,7 @@ function formatCachedResponse(cachedResult) {
     pros: result.pros_json,
     cons: result.cons_json,
     warnings: result.warnings_json,
+    recommendations: enrichRecommendations(result.recommendations_json || []),
     quotes: result.quotes_json,
     sources: {
       youtube: youtubeSources,
@@ -279,9 +282,9 @@ function formatCachedResponse(cachedResult) {
  * Format fresh response
  * @param {Object} storedResult - Stored result info
  * @param {Object} analysisResult - Fresh analysis result
- * @returns {Object} Formatted response
+ * @returns {Promise<Object>} Formatted response
  */
-function formatFreshResponse(storedResult, analysisResult) {
+async function formatFreshResponse(storedResult, analysisResult) {
   const youtubeSources = analysisResult.sources.youtube.map(formatSource);
   const redditSources = analysisResult.sources.reddit.map(formatSource);
 
@@ -296,6 +299,9 @@ function formatFreshResponse(storedResult, analysisResult) {
     summary: analysisResult.analysis.summary,
     pros: analysisResult.analysis.pros,
     cons: analysisResult.analysis.cons,
+    recommendations: enrichRecommendations(
+      analysisResult.analysis.recommendations || [],
+    ),
     warnings: analysisResult.analysis.warnings,
     quotes: analysisResult.analysis.quotes,
     sources: {
@@ -334,7 +340,7 @@ async function getSearchBySlug(slug) {
       return null;
     }
 
-    return formatCachedResponse(cachedResult);
+    return await formatCachedResponse(cachedResult);
   } catch (error) {
     logger.error("Failed to get search by slug", {
       error: error.message,
